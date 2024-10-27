@@ -183,7 +183,7 @@ def filter_by_conditions(symbol):
 
     return all_conditions_met
 
-def get_top_volume_perpetual(top_n=50):
+def get_top_volume_perpetual(top_n=195):
     """
     获取成交量前top_n的U本位永续合约。
     """
