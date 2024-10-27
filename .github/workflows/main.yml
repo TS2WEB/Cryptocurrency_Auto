@@ -22,18 +22,14 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/*.py') }}
         restore-keys: |
           ${{ runner.os }}-pip-
           
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install numpy==1.26.4
-        pip install ccxt==4.2.15
-        pip install pandas==2.2.0
-        pip install pandas-ta==0.3.14b
-        pip install pytz==2024.1
+        pip install numpy==1.26.4 ccxt==4.2.15 pandas==2.2.0 pandas-ta==0.3.14b pytz==2024.1
         
     - name: Run script
       run: python main.py
