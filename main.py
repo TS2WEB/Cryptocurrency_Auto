@@ -49,9 +49,10 @@ def fetch_market_data(symbol, timeframe, limit=100):
         # 计算技术指标
         try:
             # MACD - 使用标准参数(12,26,9)
-            macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
-            macd.columns = ['MACD', 'MACD_signal', 'MACD_hist']
-            df = pd.concat([df, macd], axis=1)
+            if timeframe == '1h':  # 只在1小时周期计算MACD
+                macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
+                macd.columns = ['MACD', 'MACD_signal', 'MACD_hist']
+                df = pd.concat([df, macd], axis=1)
 
             # RSI - 使用7周期
             df['RSI_7'] = ta.rsi(df['close'], length=7)
@@ -60,24 +61,25 @@ def fetch_market_data(symbol, timeframe, limit=100):
             # 移动平均线
             df['MA5'] = ta.sma(df['close'], length=5)
             df['MA10'] = ta.sma(df['close'], length=10)
-            df['MA20'] = ta.sma(df['close'], length=20)
+            if timeframe == '1h':  # 只在1小时周期计算MA20
+                df['MA20'] = ta.sma(df['close'], length=20)
 
             # 成交量移动平均线
             df['volume_MA5'] = ta.sma(df['volume'], length=5)
             df['volume_MA10'] = ta.sma(df['volume'], length=10)
-
-            # 计算当前K线成交量与前5根K线平均成交量的比值
-            df['volume_ratio'] = df['volume'] / df['volume'].rolling(window=5).mean().shift(1)
 
         except Exception as e:
             print(f"计算技术指标时出错 {symbol} {timeframe}: {str(e)}")
             return None
 
         # 验证关键指标是否存在
-        required_columns = ['close', 'RSI_7', 'MACD_hist', 'MA5', 'MA10', 'MA20', 
-                          'volume_MA5', 'volume_MA10', 'volume_ratio']
+        required_columns = {
+            '1h': ['close', 'MACD_hist', 'MA5', 'MA10', 'MA20', 'volume_MA5', 'volume_MA10'],
+            '15m': ['close', 'RSI_7', 'MA5', 'MA10', 'volume_MA5', 'volume_MA10'],
+            '5m': ['RSI_7', 'RSI_7_prev']
+        }
         
-        if not all(col in df.columns for col in required_columns):
+        if not all(col in df.columns for col in required_columns[timeframe]):
             print(f"警告: {timeframe} 时间框架缺少必要的技术指标")
             return None
 
@@ -104,13 +106,20 @@ def check_1h_conditions(df):
         # 计算价格与MA20的偏离百分比
         ma20_deviation = (latest['close'] - latest['MA20']) / latest['MA20'] * 100
 
-        return (
-            latest['close'] > latest['MA20'] and
-            latest['MA10'] > latest['MA20'] and
-            latest['MACD_hist'] > 0 and
-            ma20_deviation < 2 and
-            latest['volume_MA5'] > latest['volume_MA10']
-        )
+        conditions = {
+            "价格>MA20": latest['close'] > latest['MA20'],
+            "价格偏离<3%": ma20_deviation < 3,
+            "MA10>MA20": latest['MA10'] > latest['MA20'],
+            "MACD柱>0": latest['MACD_hist'] > 0,
+            "量能MA5>MA10": latest['volume_MA5'] > latest['volume_MA10']
+        }
+
+        # 打印详细的条件检查结果
+        print("\n1小时周期条件检查:")
+        for condition, result in conditions.items():
+            print(f"{condition}: {'满足' if result else '不满足'}")
+
+        return all(conditions.values())
 
     except Exception as e:
         print(f"检查1小时条件时出错: {str(e)}")
@@ -124,12 +133,18 @@ def check_15m_conditions(df):
     try:
         latest = df.iloc[-1]
         
-        return (
-            latest['MA5'] > latest['MA10'] and
-            40 < latest['RSI_7'] < 70 and
-            latest['volume_ratio'] > 1.5 and
-            latest['volume_MA5'] > latest['volume_MA10']
-        )
+        conditions = {
+            "MA5>MA10": latest['MA5'] > latest['MA10'],
+            "40<RSI<70": 40 < latest['RSI_7'] < 70,
+            "量能MA5>MA10": latest['volume_MA5'] > latest['volume_MA10']
+        }
+
+        # 打印详细的条件检查结果
+        print("\n15分钟周期条件检查:")
+        for condition, result in conditions.items():
+            print(f"{condition}: {'满足' if result else '不满足'}")
+
+        return all(conditions.values())
 
     except Exception as e:
         print(f"检查15分钟条件时出错: {str(e)}")
@@ -143,10 +158,12 @@ def check_5m_conditions(df):
     try:
         latest = df.iloc[-1]
         
-        return (
-            latest['RSI_7'] > latest['RSI_7_prev'] and
-            latest['MACD_hist'] > 0
-        )
+        condition_met = latest['RSI_7'] > latest['RSI_7_prev']
+        
+        print("\n5分钟周期条件检查:")
+        print(f"RSI上升: {'满足' if condition_met else '不满足'}")
+
+        return condition_met
 
     except Exception as e:
         print(f"检查5分钟条件时出错: {str(e)}")
@@ -166,6 +183,7 @@ def filter_by_conditions(symbol):
     results = {}
     all_conditions_met = True
 
+    print(f"\n开始分析 {symbol}")
     for timeframe, check_func in timeframes.items():
         df = fetch_market_data(symbol, timeframe)
         if df is not None:
@@ -177,13 +195,13 @@ def filter_by_conditions(symbol):
             all_conditions_met = False
             results[timeframe] = False
 
-    print(f"\n{symbol} 各时间框架检查结果:")
+    print("\n综合结果:")
     for tf, result in results.items():
         print(f"{tf}: {'满足' if result else '不满足'}")
 
     return all_conditions_met
 
-def get_top_volume_perpetual(top_n=195):
+def get_top_volume_perpetual(top_n=50):
     """
     获取成交量前top_n的U本位永续合约。
     """
