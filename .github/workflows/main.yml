@@ -3,7 +3,7 @@ name: auto_push+schedule
 on:
   workflow_dispatch:  # 手动触发
   schedule:
-    - cron: '*/15 * * * *'  # 每15分钟触发一次
+    - cron: '*/12 * * * *'  # 每15分钟触发一次
 
 jobs:
   run-python:
