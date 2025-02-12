@@ -5,6 +5,7 @@ from datetime import datetime
 import pytz
 
 # 创建OKEx交易所实例
+# 创建OKEx交易所实例
 exchange = ccxt.okx()
 
 def fetch_market_data(symbol, timeframe, limit=100):
